@@ -160,7 +160,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         `✅ Assigned <@&${ROLE_A_ID}> to <@${targetUserId}> (by <@${interaction.user.id}>)`
       );
       targetMember.send(
-        `You’ve been verified in **${guild.name}** and given the role **${roleA.name}**. Welcome!`
+        `You’ve been verified in **${guild.name}** and given the role **${roleA.name}**. Welcome! Please head over to <#migration-applications> and fill out the form`
       ).catch(() => {});
     } else if (action === 'assignB') {
       if (!roleB)
