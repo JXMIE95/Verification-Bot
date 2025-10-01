@@ -20,6 +20,7 @@ const {
   STAFF_CHANNEL_ID,
   ROLE_A_ID, // Verify: Existing Server Member
   ROLE_B_ID, // Verify: Migrant
+  NOT_VERIFIED_ROLE_ID, // Not Yet Verified (to be removed on verify)
   MOD_ROLE_ID, // optional (restrict who can click)
 } = process.env;
 
@@ -48,8 +49,7 @@ client.on(Events.MessageCreate, async (message) => {
       message.guild?.id !== GUILD_ID ||
       message.channel.id !== VERIFICATION_CHANNEL_ID ||
       message.author.bot
-    )
-      return;
+    ) return;
 
     const attachments = [...message.attachments.values()];
     const hasImage = attachments.some(isImageAttachment);
@@ -63,8 +63,8 @@ client.on(Events.MessageCreate, async (message) => {
       .setTitle('New verification submission')
       .setDescription(
         `**User:** <@${author.id}> (${author.id})\n` +
-          `**Message:** [jump to message](${message.url})\n\n` +
-          'Review the image and select which role to assign, or deny.'
+        `**Message:** [jump to message](${message.url})\n\n` +
+        'Review the image and select which role to assign, or deny.'
       )
       .setTimestamp(new Date())
       .setFooter({ text: `In #${message.channel.name}` });
@@ -72,7 +72,6 @@ client.on(Events.MessageCreate, async (message) => {
     const firstImage = attachments.find(isImageAttachment);
     if (firstImage?.url) embed.setImage(firstImage.url);
 
-    // Buttons: Role A, Role B, or Deny
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`assignA:${message.id}:${author.id}`)
@@ -99,7 +98,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (!interaction.isButton()) return;
 
-    // Optional restriction: only mods
+    // Optional restriction: only mods (or anyone with Manage Roles)
     if (MOD_ROLE_ID) {
       const member = await interaction.guild.members.fetch(interaction.user.id);
       if (
@@ -119,9 +118,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.reply({ content: 'Guild not found.', ephemeral: true });
     }
 
-    const targetMember = await guild.members
-      .fetch(targetUserId)
-      .catch(() => null);
+    const targetMember = await guild.members.fetch(targetUserId).catch(() => null);
     if (!targetMember) {
       return interaction.reply({
         content: 'User is no longer in the server.',
@@ -131,6 +128,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const roleA = guild.roles.cache.get(ROLE_A_ID);
     const roleB = guild.roles.cache.get(ROLE_B_ID);
+    const notVerifiedRole = NOT_VERIFIED_ROLE_ID
+      ? guild.roles.cache.get(NOT_VERIFIED_ROLE_ID)
+      : null;
+
+    // helper: remove Not Yet Verified if present
+    const removeNotVerifiedIfAny = async () => {
+      if (notVerifiedRole && targetMember.roles.cache.has(notVerifiedRole.id)) {
+        await targetMember.roles.remove(
+          notVerifiedRole,
+          `Auto-removed on verification by ${interaction.user.tag}`
+        ).catch(() => {});
+      }
+    };
 
     const finishAndAck = async (content) =>
       interaction.update({
@@ -142,33 +152,29 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (action === 'assignA') {
       if (!roleA)
         return interaction.reply({ content: 'Role A not found.', ephemeral: true });
-      await targetMember.roles.add(
-        roleA,
-        `Verified by ${interaction.user.tag} (Role A)`
-      );
+
+      await targetMember.roles.add(roleA, `Verified by ${interaction.user.tag} (Role A)`);
+      await removeNotVerifiedIfAny();
+
       await finishAndAck(
         `✅ Assigned <@&${ROLE_A_ID}> to <@${targetUserId}> (by <@${interaction.user.id}>)`
       );
-      targetMember
-        .send(
-          `You’ve been verified in **${guild.name}** and given the role **${roleA.name}**. Welcome!`
-        )
-        .catch(() => {});
+      targetMember.send(
+        `You’ve been verified in **${guild.name}** and given the role **${roleA.name}**. Welcome!`
+      ).catch(() => {});
     } else if (action === 'assignB') {
       if (!roleB)
         return interaction.reply({ content: 'Role B not found.', ephemeral: true });
-      await targetMember.roles.add(
-        roleB,
-        `Verified by ${interaction.user.tag} (Role B)`
-      );
+
+      await targetMember.roles.add(roleB, `Verified by ${interaction.user.tag} (Role B)`);
+      await removeNotVerifiedIfAny();
+
       await finishAndAck(
         `✅ Assigned <@&${ROLE_B_ID}> to <@${targetUserId}> (by <@${interaction.user.id}>)`
       );
-      targetMember
-        .send(
-          `You’ve been verified in **${guild.name}** and given the role **${roleB.name}**. Welcome!`
-        )
-        .catch(() => {});
+      targetMember.send(
+        `You’ve been verified in **${guild.name}** and given the role **${roleB.name}**. Welcome!`
+      ).catch(() => {});
     } else if (action === 'deny') {
       const verificationChannel = await interaction.client.channels
         .fetch(VERIFICATION_CHANNEL_ID)
@@ -182,21 +188,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await finishAndAck(
         `❌ Denied <@${targetUserId}> (by <@${interaction.user.id}>)`
       );
-      targetMember
-        .send(
-          `Your verification in **${guild.name}** was not approved. Please review the instructions and try again.`
-        )
-        .catch(() => {});
+      targetMember.send(
+        `Your verification in **${guild.name}** was not approved. Please review the instructions and try again.`
+      ).catch(() => {});
     }
   } catch (err) {
     console.error('Error handling button interaction:', err);
     if (interaction.isRepliable()) {
-      interaction
-        .reply({
-          content: 'Something went wrong while processing that action.',
-          ephemeral: true,
-        })
-        .catch(() => {});
+      interaction.reply({
+        content: 'Something went wrong while processing that action.',
+        ephemeral: true,
+      }).catch(() => {});
     }
   }
 });
