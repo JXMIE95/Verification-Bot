@@ -4,9 +4,6 @@ npm-debug.log
 yarn-debug.log*
 yarn-error.log*
 
-# Env files (keep your bot token + IDs secret)
-.env
-
 # Logs
 logs
 *.log
