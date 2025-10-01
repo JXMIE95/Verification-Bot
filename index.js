@@ -173,7 +173,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         `✅ Assigned <@&${ROLE_B_ID}> to <@${targetUserId}> (by <@${interaction.user.id}>)`
       );
       targetMember.send(
-        `You’ve been verified in **${guild.name}** and given the role **${roleB.name}**. Welcome! Please head over to <#migration-applicatioms next and fill out a form.`
+        `You’ve been verified in **${guild.name}** and given the role **${roleB.name}**. Welcome! Please head over to <#1422618567458951368> next and fill out a form.`
       ).catch(() => {});
     } else if (action === 'deny') {
       const verificationChannel = await interaction.client.channels
