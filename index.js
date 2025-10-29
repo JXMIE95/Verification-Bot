@@ -60,11 +60,11 @@ client.on(Events.MessageCreate, async (message) => {
 
     const author = message.author;
     const embed = new EmbedBuilder()
-      .setTitle(' <@&${MOD_ROLE_ID}> New verification submission')
+      .setTitle('New verification submission')
       .setDescription(
         `**User:** <@${author.id}>\n` +
         `**Message:** [jump to message](${message.url})\n\n` +
-        'Review the image and select which role to assign, or deny.'
+        '<@&${MOD_ROLE_ID}> Review the image and select which role to assign, or deny.'
       )
       .setTimestamp(new Date())
       .setFooter({ text: `In #${message.channel.name}` });
