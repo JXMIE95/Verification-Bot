@@ -64,7 +64,7 @@ client.on(Events.MessageCreate, async (message) => {
       .setDescription(
         `**User:** <@${author.id}>\n` +
         `**Message:** [jump to message](${message.url})\n\n` +
-        '<@&${MOD_ROLE_ID}> Review the image and select which role to assign, or deny.'
+        '${MOD_ROLE_ID} please review the image and select which role to assign, or deny.'
       )
       .setTimestamp(new Date())
       .setFooter({ text: `In #${message.channel.name}` });
