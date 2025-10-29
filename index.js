@@ -42,8 +42,8 @@ client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-/* ---------- Welcome message logic (embed + HELP button, no DMs) ---------- */
-const postedWelcomeFor = new Set();
+/* ---------- Welcome message logic (embed + HELP button + rejoin fix) ---------- */
+const welcomedJoinKey = new Map();
 
 const buildWelcomeEmbed = (member) =>
   new EmbedBuilder()
@@ -60,7 +60,9 @@ const buildWelcomeEmbed = (member) =>
 async function maybePostWelcome(member) {
   try {
     if (member.guild.id !== GUILD_ID) return;
-    if (postedWelcomeFor.has(member.id)) return;
+
+    const joinKey = member.joinedTimestamp;
+    if (welcomedJoinKey.get(member.id) === joinKey) return; // already welcomed this join
 
     const channel = await member.guild.channels.fetch(VERIFICATION_CHANNEL_ID).catch(() => null);
     if (!channel || !channel.isTextBased()) return;
@@ -69,7 +71,7 @@ async function maybePostWelcome(member) {
     const canView = channel.permissionsFor(member)?.has(PermissionFlagsBits.ViewChannel);
     if (!canView) return;
 
-    // HELP button (clickable by the new member)
+    // HELP button
     const helpRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`help:${member.id}`)
@@ -82,15 +84,13 @@ async function maybePostWelcome(member) {
       components: [helpRow],
     });
 
-    postedWelcomeFor.add(member.id);
-    // Cleanup memory after 24h
-    setTimeout(() => postedWelcomeFor.delete(member.id), 24 * 60 * 60 * 1000);
+    welcomedJoinKey.set(member.id, joinKey);
   } catch (err) {
     console.error('maybePostWelcome error:', err);
   }
 }
 
-// On join: no DM; just a light delayed attempt (in case screening completes quickly)
+// On join: delayed check (in case screening completes fast)
 client.on(Events.GuildMemberAdd, async (member) => {
   try {
     if (member.guild.id !== GUILD_ID) return;
@@ -115,9 +115,9 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     console.error('GuildMemberUpdate welcome error:', err);
   }
 });
-/* ------------------------------------------------------------------------ */
+/* ------------------------------------------------------------------------------ */
 
-/* -------------------- Listen for images and staff prompt ----------------- */
+/* -------------------- Listen for images and staff prompt ---------------------- */
 client.on(Events.MessageCreate, async (message) => {
   try {
     if (
@@ -167,21 +167,20 @@ client.on(Events.MessageCreate, async (message) => {
     await staffChannel.send({
       embeds: [embed],
       components: [row],
-      // ensure the role ping goes through
       allowedMentions: { roles: MOD_ROLE_ID ? [MOD_ROLE_ID] : [] }
     });
   } catch (err) {
     console.error('Error handling verification submission:', err);
   }
 });
-/* ------------------------------------------------------------------------ */
+/* ------------------------------------------------------------------------------ */
 
-/* ---------------------------- Button handling ---------------------------- */
+/* ---------------------------- Button handling --------------------------------- */
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (!interaction.isButton()) return;
 
-    /* ----- HELP button (clickable by anyone) ----- */
+    /* ----- HELP button ----- */
     if (interaction.customId.startsWith('help:')) {
       const userId = interaction.customId.split(':')[1];
       const staffChannel = await client.channels.fetch(STAFF_CHANNEL_ID).catch(() => null);
@@ -207,7 +206,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
     /* ------------------------------------------------ */
 
-    // Optional restriction for verification actions: only mods (or anyone with Manage Roles)
+    // Restrict verification actions to mods/managers
     if (MOD_ROLE_ID) {
       const member = await interaction.guild.members.fetch(interaction.user.id);
       if (
@@ -221,7 +220,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // From here on, handle verification buttons (assignA/assignB/deny)
+    // Handle verification buttons (assignA/assignB/deny)
     const [action, messageId, targetUserId] = interaction.customId.split(':');
     const guild = interaction.guild;
     if (!guild) {
@@ -242,7 +241,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ? guild.roles.cache.get(NOT_VERIFIED_ROLE_ID)
       : null;
 
-    // helper: remove Not Yet Verified if present
     const removeNotVerifiedIfAny = async () => {
       if (notVerifiedRole && targetMember.roles.cache.has(notVerifiedRole.id)) {
         await targetMember.roles.remove(
@@ -312,6 +310,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 });
-/* ------------------------------------------------------------------------ */
+/* ------------------------------------------------------------------------------ */
 
 client.login(DISCORD_TOKEN);
