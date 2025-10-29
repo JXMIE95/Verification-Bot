@@ -60,7 +60,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     const author = message.author;
     const embed = new EmbedBuilder()
-      .setTitle('<@${MOD_ROLE_ID}> New verification submission')
+      .setTitle('<@&${MOD_ROLE_ID}> New verification submission')
       .setDescription(
         `**User:** <@${author.id}> (${author.id})\n` +
         `**Message:** [jump to message](${message.url})\n\n` +
