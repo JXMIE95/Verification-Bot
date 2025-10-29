@@ -42,7 +42,82 @@ client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// Listen for images in #verification and send staff prompt
+/* ---------- Welcome message logic (embed + HELP button, no DMs) ---------- */
+const postedWelcomeFor = new Set();
+
+const buildWelcomeEmbed = (member) =>
+  new EmbedBuilder()
+    .setTitle('👋 Welcome to the Empire 4 Migration Server!')
+    .setDescription(
+      `Welcome <@${member.id}>!\n\n` +
+      `If you are looking to migrate to us, thank you for choosing our Empire to be your new home!\n\n` +
+      `Please head over to <#${VERIFICATION_CHANNEL_ID}> and post a screenshot of your in-game governor ID screen so a **Migration Coordinator** can verify you and assign the relevant roles.\n\n` +
+      `*Once verified you will be granted access to the remainder of the server.*`
+    )
+    .setColor(0x3498db)
+    .setTimestamp();
+
+async function maybePostWelcome(member) {
+  try {
+    if (member.guild.id !== GUILD_ID) return;
+    if (postedWelcomeFor.has(member.id)) return;
+
+    const channel = await member.guild.channels.fetch(VERIFICATION_CHANNEL_ID).catch(() => null);
+    if (!channel || !channel.isTextBased()) return;
+
+    // Only post if the member can actually view the channel
+    const canView = channel.permissionsFor(member)?.has(PermissionFlagsBits.ViewChannel);
+    if (!canView) return;
+
+    // HELP button (clickable by the new member)
+    const helpRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`help:${member.id}`)
+        .setLabel('🆘 HELP')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    await channel.send({
+      embeds: [buildWelcomeEmbed(member)],
+      components: [helpRow],
+    });
+
+    postedWelcomeFor.add(member.id);
+    // Cleanup memory after 24h
+    setTimeout(() => postedWelcomeFor.delete(member.id), 24 * 60 * 60 * 1000);
+  } catch (err) {
+    console.error('maybePostWelcome error:', err);
+  }
+}
+
+// On join: no DM; just a light delayed attempt (in case screening completes quickly)
+client.on(Events.GuildMemberAdd, async (member) => {
+  try {
+    if (member.guild.id !== GUILD_ID) return;
+    setTimeout(() => maybePostWelcome(member), 30_000);
+  } catch (err) {
+    console.error('GuildMemberAdd welcome error:', err);
+  }
+});
+
+// When screening completes (pending -> false), try to post
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  try {
+    if (newMember.guild.id !== GUILD_ID) return;
+
+    const wasPending = oldMember?.pending === true;
+    const nowPending = newMember?.pending === true;
+
+    if (wasPending && !nowPending) {
+      await maybePostWelcome(newMember);
+    }
+  } catch (err) {
+    console.error('GuildMemberUpdate welcome error:', err);
+  }
+});
+/* ------------------------------------------------------------------------ */
+
+/* -------------------- Listen for images and staff prompt ----------------- */
 client.on(Events.MessageCreate, async (message) => {
   try {
     if (
@@ -64,7 +139,9 @@ client.on(Events.MessageCreate, async (message) => {
       .setDescription(
         `**User:** <@${author.id}>\n` +
         `**Message:** [jump to message](${message.url})\n\n` +
-        '<@&${MOD_ROLE_ID}> please review the image and select which role to assign, or deny.'
+        (MOD_ROLE_ID
+          ? `<@&${MOD_ROLE_ID}> please review the image and select which role to assign, or deny.`
+          : `Please review the image and select which role to assign, or deny.`)
       )
       .setTimestamp(new Date())
       .setFooter({ text: `In #${message.channel.name}` });
@@ -87,18 +164,50 @@ client.on(Events.MessageCreate, async (message) => {
         .setStyle(ButtonStyle.Danger),
     );
 
-    await staffChannel.send({ embeds: [embed], components: [row] });
+    await staffChannel.send({
+      embeds: [embed],
+      components: [row],
+      // ensure the role ping goes through
+      allowedMentions: { roles: MOD_ROLE_ID ? [MOD_ROLE_ID] : [] }
+    });
   } catch (err) {
     console.error('Error handling verification submission:', err);
   }
 });
+/* ------------------------------------------------------------------------ */
 
-// Handle button clicks
+/* ---------------------------- Button handling ---------------------------- */
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (!interaction.isButton()) return;
 
-    // Optional restriction: only mods (or anyone with Manage Roles)
+    /* ----- HELP button (clickable by anyone) ----- */
+    if (interaction.customId.startsWith('help:')) {
+      const userId = interaction.customId.split(':')[1];
+      const staffChannel = await client.channels.fetch(STAFF_CHANNEL_ID).catch(() => null);
+
+      if (staffChannel && staffChannel.isTextBased()) {
+        const content = MOD_ROLE_ID
+          ? `<@&${MOD_ROLE_ID}> **User <@${userId}> needs help with verification.**`
+          : `**User <@${userId}> needs help with verification.**`;
+
+        await staffChannel.send({
+          content,
+          allowedMentions: {
+            roles: MOD_ROLE_ID ? [MOD_ROLE_ID] : [],
+            users: [userId],
+          },
+        });
+      }
+
+      return interaction.reply({
+        content: '✅ A moderator has been notified — someone will assist you shortly!',
+        ephemeral: true,
+      });
+    }
+    /* ------------------------------------------------ */
+
+    // Optional restriction for verification actions: only mods (or anyone with Manage Roles)
     if (MOD_ROLE_ID) {
       const member = await interaction.guild.members.fetch(interaction.user.id);
       if (
@@ -112,6 +221,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
+    // From here on, handle verification buttons (assignA/assignB/deny)
     const [action, messageId, targetUserId] = interaction.customId.split(':');
     const guild = interaction.guild;
     if (!guild) {
@@ -202,5 +312,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 });
+/* ------------------------------------------------------------------------ */
 
 client.login(DISCORD_TOKEN);
