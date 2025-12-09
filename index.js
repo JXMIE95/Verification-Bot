@@ -26,13 +26,11 @@ const SETTINGS_PATH = './guildSettings.json';
  *   [guildId]: {
  *     verificationChannelId?: string,
  *     staffChannelId?: string,
- *     roleAId?: string,              // legacy simple A/B roles
+ *     roleAId?: string,
  *     roleBId?: string,
  *     notVerifiedRoleId?: string,
  *     modRoleId?: string,
- *     verifyRoles?: [                // flexible role buttons
- *       { roleId: string, label: string }
- *     ],
+ *     verifyRoles?: [{ roleId: string, label: string }],
  *     welcomeTitle?: string,
  *     welcomeDescription?: string
  *   }
@@ -41,15 +39,24 @@ const SETTINGS_PATH = './guildSettings.json';
 let guildSettings = {};
 if (fs.existsSync(SETTINGS_PATH)) {
   try {
-    guildSettings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+    const raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
+    guildSettings = JSON.parse(raw);
+    console.log('📂 Loaded guildSettings.json');
   } catch (e) {
-    console.error('Failed to parse guildSettings.json, starting empty:', e);
+    console.error('❌ Failed to parse guildSettings.json, starting empty:', e);
     guildSettings = {};
   }
+} else {
+  console.log('📂 No guildSettings.json found yet (will be created after /setup).');
 }
 
 function saveSettings() {
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(guildSettings, null, 2));
+  try {
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(guildSettings, null, 2));
+    console.log('💾 Saved guildSettings.json');
+  } catch (e) {
+    console.error('❌ Failed to write guildSettings.json:', e);
+  }
 }
 
 function getGuildConfig(guildId) {
@@ -59,6 +66,7 @@ function getGuildConfig(guildId) {
 function updateGuildConfig(guildId, partial) {
   const existing = guildSettings[guildId] || {};
   guildSettings[guildId] = { ...existing, ...partial };
+  console.log(`🛠 Updated config for guild ${guildId}:`, guildSettings[guildId]);
   saveSettings();
 }
 
@@ -77,119 +85,127 @@ const isImageAttachment = (att) =>
   Boolean(att?.contentType?.startsWith('image/')) ||
   /\.(png|jpe?g|gif|webp)$/i.test(att?.name || '');
 
-// ---------- Slash command registration ----------
+// ---------- Slash command definition ----------
+const setupCommand = new SlashCommandBuilder()
+  .setName('setup')
+  .setDescription('Configure verification bot for this server')
+  .addSubcommand(sub =>
+    sub
+      .setName('verification')
+      .setDescription('Set the verification channel')
+      .addChannelOption(opt =>
+        opt
+          .setName('channel')
+          .setDescription('Channel where users post verification screenshots and see the welcome message')
+          .setRequired(true)
+      )
+  )
+  .addSubcommand(sub =>
+    sub
+      .setName('staff')
+      .setDescription('Set the staff review channel')
+      .addChannelOption(opt =>
+        opt
+          .setName('channel')
+          .setDescription('Channel where staff receive verification submissions')
+          .setRequired(true)
+      )
+  )
+  .addSubcommand(sub =>
+    sub
+      .setName('roles')
+      .setDescription('Set legacy Role A / Role B / Not Verified role')
+      .addRoleOption(opt =>
+        opt
+          .setName('role_a')
+          .setDescription('Role for "Existing Server Member"')
+          .setRequired(false)
+      )
+      .addRoleOption(opt =>
+        opt
+          .setName('role_b')
+          .setDescription('Role for "Migrant"')
+          .setRequired(false)
+      )
+      .addRoleOption(opt =>
+        opt
+          .setName('not_verified_role')
+          .setDescription('Role for "Not Yet Verified" (removed on verify)')
+          .setRequired(false)
+      )
+  )
+  .addSubcommand(sub =>
+    sub
+      .setName('modrole')
+      .setDescription('Set the moderator role allowed to verify')
+      .addRoleOption(opt =>
+        opt
+          .setName('role')
+          .setDescription('Moderator / Migration Coordinator role')
+          .setRequired(true)
+      )
+  )
+  .addSubcommand(sub =>
+    sub
+      .setName('welcome')
+      .setDescription('Set the welcome embed text for new members')
+      .addStringOption(opt =>
+        opt
+          .setName('description')
+          .setDescription('Embed description (supports {user} and {verification_channel})')
+          .setRequired(true)
+      )
+      .addStringOption(opt =>
+        opt
+          .setName('title')
+          .setDescription('Embed title (optional)')
+          .setRequired(false)
+      )
+  )
+  .addSubcommand(sub =>
+    sub
+      .setName('verifyrole_add')
+      .setDescription('Add a verification role button')
+      .addRoleOption(opt =>
+        opt
+          .setName('role')
+          .setDescription('Role to assign')
+          .setRequired(true)
+      )
+      .addStringOption(opt =>
+        opt
+          .setName('label')
+          .setDescription('Button label (e.g. "✅ Verify: Migrant")')
+          .setRequired(false)
+      )
+  )
+  .addSubcommand(sub =>
+    sub
+      .setName('verifyrole_clear')
+      .setDescription('Clear all verification role buttons')
+  )
+  .addSubcommand(sub =>
+    sub
+      .setName('verifyrole_list')
+      .setDescription('List current verification role buttons')
+  );
+
+// ---------- Ready ----------
 client.once(Events.ClientReady, async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
-  const setupCommand = new SlashCommandBuilder()
-    .setName('setup')
-    .setDescription('Configure verification bot for this server')
-    .addSubcommand(sub =>
-      sub
-        .setName('verification')
-        .setDescription('Set the verification channel')
-        .addChannelOption(opt =>
-          opt
-            .setName('channel')
-            .setDescription('Channel where users post verification screenshots and see the welcome message')
-            .setRequired(true)
-        )
-    )
-    .addSubcommand(sub =>
-      sub
-        .setName('staff')
-        .setDescription('Set the staff review channel')
-        .addChannelOption(opt =>
-          opt
-            .setName('channel')
-            .setDescription('Channel where staff receive verification submissions')
-            .setRequired(true)
-        )
-    )
-    .addSubcommand(sub =>
-      sub
-        .setName('roles')
-        .setDescription('Set legacy Role A / Role B / Not Verified role')
-        .addRoleOption(opt =>
-          opt
-            .setName('role_a')
-            .setDescription('Role for "Existing Server Member"')
-            .setRequired(false)
-        )
-        .addRoleOption(opt =>
-          opt
-            .setName('role_b')
-            .setDescription('Role for "Migrant"')
-            .setRequired(false)
-        )
-        .addRoleOption(opt =>
-          opt
-            .setName('not_verified_role')
-            .setDescription('Role for "Not Yet Verified" (removed on verify)')
-            .setRequired(false)
-        )
-    )
-    .addSubcommand(sub =>
-      sub
-        .setName('modrole')
-        .setDescription('Set the moderator role allowed to verify')
-        .addRoleOption(opt =>
-          opt
-            .setName('role')
-            .setDescription('Moderator / Migration Coordinator role')
-            .setRequired(true)
-        )
-    )
-    .addSubcommand(sub =>
-      sub
-        .setName('welcome')
-        .setDescription('Set the welcome embed text for new members')
-        .addStringOption(opt =>
-          opt
-            .setName('description')
-            .setDescription('Embed description (supports {user} and {verification_channel})')
-            .setRequired(true)
-        )
-        .addStringOption(opt =>
-          opt
-            .setName('title')
-            .setDescription('Embed title (optional)')
-            .setRequired(false)
-        )
-    )
-    .addSubcommand(sub =>
-      sub
-        .setName('verifyrole_add')
-        .setDescription('Add a verification role button')
-        .addRoleOption(opt =>
-          opt
-            .setName('role')
-            .setDescription('Role to assign')
-            .setRequired(true)
-        )
-        .addStringOption(opt =>
-          opt
-            .setName('label')
-            .setDescription('Button label (e.g. "✅ Verify: Migrant")')
-            .setRequired(false)
-        )
-    )
-    .addSubcommand(sub =>
-      sub
-        .setName('verifyrole_clear')
-        .setDescription('Clear all verification role buttons')
-    )
-    .addSubcommand(sub =>
-      sub
-        .setName('verifyrole_list')
-        .setDescription('List current verification role buttons')
-    );
+  // Register commands PER GUILD so they show quickly
+  const guilds = await client.guilds.fetch();
+  for (const [id] of guilds) {
+    const guild = await client.guilds.fetch(id);
+    await guild.commands.set([setupCommand]);
+    console.log(`📦 Registered /setup command for guild ${guild.name} (${guild.id})`);
+  }
 
-  await client.application.commands.set([setupCommand]);
-  console.log('✅ Slash commands registered');
+  console.log('✅ Setup complete. Use /setup in your server to configure the bot.');
 });
 
-// ---------- Welcome message logic (embed + HELP, per-guild) ----------
+// ---------- Welcome message logic ----------
 const welcomedJoinKey = new Map(); // userId -> joinedTimestamp
 
 function applyWelcomeTemplate(text, member, config) {
@@ -228,17 +244,25 @@ const buildWelcomeEmbed = (member, config) => {
 async function maybePostWelcome(member) {
   try {
     const config = getGuildConfig(member.guild.id);
-    if (!config?.verificationChannelId) return;
+    if (!config?.verificationChannelId) {
+      console.log(`ℹ️ No verificationChannelId set for guild ${member.guild.id}, skipping welcome.`);
+      return;
+    }
 
     const joinKey = member.joinedTimestamp;
     if (welcomedJoinKey.get(member.id) === joinKey) return; // already welcomed this join
 
     const channel = await member.guild.channels.fetch(config.verificationChannelId).catch(() => null);
-    if (!channel || !channel.isTextBased()) return;
+    if (!channel || !channel.isTextBased()) {
+      console.log(`⚠️ Configured verification channel not found or not text-based in guild ${member.guild.id}`);
+      return;
+    }
 
-    // Only post if the member can actually view the channel
     const canView = channel.permissionsFor(member)?.has(PermissionFlagsBits.ViewChannel);
-    if (!canView) return;
+    if (!canView) {
+      console.log(`ℹ️ Member ${member.id} cannot see verification channel yet, skipping welcome for now.`);
+      return;
+    }
 
     const helpRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -252,24 +276,29 @@ async function maybePostWelcome(member) {
       components: [helpRow],
     });
 
+    console.log(`👋 Sent welcome embed for member ${member.id} in guild ${member.guild.id}`);
     welcomedJoinKey.set(member.id, joinKey);
   } catch (err) {
-    console.error('maybePostWelcome error:', err);
+    console.error('❌ maybePostWelcome error:', err);
   }
 }
 
-// On join: delayed check (in case screening completes fast)
+// On join: delayed check
 client.on(Events.GuildMemberAdd, async (member) => {
   try {
     const config = getGuildConfig(member.guild.id);
-    if (!config) return; // bot not set up for this guild
+    if (!config) {
+      console.log(`ℹ️ Member joined guild ${member.guild.id}, but no config exists yet.`);
+      return;
+    }
+    console.log(`👤 Member joined: ${member.id} in guild ${member.guild.id} – scheduling welcome.`);
     setTimeout(() => maybePostWelcome(member), 30_000);
   } catch (err) {
-    console.error('GuildMemberAdd welcome error:', err);
+    console.error('❌ GuildMemberAdd welcome error:', err);
   }
 });
 
-// When screening completes (pending -> false), try to post
+// When screening completes
 client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
   try {
     const config = getGuildConfig(newMember.guild.id);
@@ -279,21 +308,20 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     const nowPending = newMember?.pending === true;
 
     if (wasPending && !nowPending) {
+      console.log(`✅ Member ${newMember.id} finished screening in guild ${newMember.guild.id}, trying welcome.`);
       await maybePostWelcome(newMember);
     }
   } catch (err) {
-    console.error('GuildMemberUpdate welcome error:', err);
+    console.error('❌ GuildMemberUpdate welcome error:', err);
   }
 });
 
-// ---------- Build verification role buttons (flexible) ----------
+// ---------- Verification roles helper ----------
 function getVerifyRoles(config, guild) {
-  // If flexible roles configured, use those
   if (Array.isArray(config?.verifyRoles) && config.verifyRoles.length > 0) {
     return config.verifyRoles;
   }
 
-  // Fallback to legacy Role A / Role B if present
   const roles = [];
   if (config?.roleAId) {
     const r = guild.roles.cache.get(config.roleAId);
@@ -325,8 +353,13 @@ client.on(Events.MessageCreate, async (message) => {
     const hasImage = attachments.some(isImageAttachment);
     if (!hasImage) return;
 
+    console.log(`📸 Detected verification image from ${message.author.id} in guild ${message.guild.id}`);
+
     const staffChannel = await client.channels.fetch(config.staffChannelId).catch(() => null);
-    if (!staffChannel || staffChannel.type !== ChannelType.GuildText) return;
+    if (!staffChannel || staffChannel.type !== ChannelType.GuildText) {
+      console.log(`⚠️ Staff channel not found or not text-based in guild ${message.guild.id}`);
+      return;
+    }
 
     const author = message.author;
     const embed = new EmbedBuilder()
@@ -346,10 +379,8 @@ client.on(Events.MessageCreate, async (message) => {
     if (firstImage?.url) embed.setImage(firstImage.url);
 
     const verifyRoles = getVerifyRoles(config, message.guild);
-
     const allButtons = [];
 
-    // Dynamic role buttons
     for (const vr of verifyRoles) {
       allButtons.push(
         new ButtonBuilder()
@@ -359,7 +390,6 @@ client.on(Events.MessageCreate, async (message) => {
       );
     }
 
-    // Deny button
     allButtons.push(
       new ButtonBuilder()
         .setCustomId(`deny:${message.id}:${author.id}`)
@@ -367,7 +397,6 @@ client.on(Events.MessageCreate, async (message) => {
         .setStyle(ButtonStyle.Danger)
     );
 
-    // Chunk into rows of up to 5 buttons
     const rows = [];
     for (let i = 0; i < allButtons.length; i += 5) {
       rows.push(new ActionRowBuilder().addComponents(...allButtons.slice(i, i + 5)));
@@ -378,12 +407,14 @@ client.on(Events.MessageCreate, async (message) => {
       components: rows,
       allowedMentions: { roles: config.modRoleId ? [config.modRoleId] : [] }
     });
+
+    console.log(`📨 Sent staff verification embed for user ${author.id} in guild ${message.guild.id}`);
   } catch (err) {
-    console.error('Error handling verification submission:', err);
+    console.error('❌ Error handling verification submission:', err);
   }
 });
 
-// ---------- Interaction handling: slash commands + buttons ----------
+// ---------- Interaction handling ----------
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     // ----- Slash commands (/setup ...) -----
@@ -393,7 +424,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
       }
 
-      // Only allow admins / manage guild to run setup
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
         return interaction.reply({
           content: 'You need the **Manage Server** permission to run setup commands.',
@@ -404,6 +434,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const sub = interaction.options.getSubcommand();
       const guildId = interaction.guildId;
       const config = getGuildConfig(guildId) || {};
+      console.log(`⚙️ /setup ${sub} used in guild ${guildId} by ${interaction.user.id}`);
 
       if (sub === 'verification') {
         const channel = interaction.options.getChannel('channel', true);
@@ -429,9 +460,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const notVerified = interaction.options.getRole('not_verified_role', false);
 
         updateGuildConfig(guildId, {
-          roleAId: roleA?.id || config.roleAId,
-          roleBId: roleB?.id || config.roleBId,
-          notVerifiedRoleId: notVerified?.id || config.notVerifiedRoleId,
+          roleAId: roleA?.id ?? config.roleAId,
+          roleBId: roleB?.id ?? config.roleBId,
+          notVerifiedRoleId: notVerified?.id ?? config.notVerifiedRoleId,
         });
 
         const lines = [];
@@ -539,7 +570,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const config = getGuildConfig(guild.id);
     if (!config) return;
 
-    // HELP button (ping staff)
+    // HELP button
     if (interaction.customId.startsWith('help:')) {
       const userId = interaction.customId.split(':')[1];
       const staffChannelId = config.staffChannelId;
@@ -567,9 +598,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // From here: verification buttons (assign / legacy assignA/B / deny)
-
-    // Restrict verification actions to mods/managers if modRoleId is set
+    // Restrict verification actions
     if (config.modRoleId) {
       const member = await guild.members.fetch(interaction.user.id);
       if (
@@ -586,14 +615,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const parts = interaction.customId.split(':');
     const action = parts[0];
 
-    // Common values for all patterns
     let messageId;
     let targetUserId;
     let targetMember;
     let assignedRole = null;
 
     if (action === 'assign') {
-      // New format: assign:<roleId>:<messageId>:<userId>
       const roleId = parts[1];
       messageId = parts[2];
       targetUserId = parts[3];
@@ -613,9 +640,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ephemeral: true,
         });
       }
-
-    } else if (action === 'assignA' || action === 'assignB' || action === 'deny') {
-      // Legacy format: assignA:<messageId>:<userId> / assignB:<messageId>:<userId> / deny:<messageId>:<userId>
+    } else if (action === 'deny') {
       messageId = parts[1];
       targetUserId = parts[2];
 
@@ -626,26 +651,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ephemeral: true,
         });
       }
-
-      if (action === 'assignA') {
-        assignedRole = config.roleAId ? guild.roles.cache.get(config.roleAId) : null;
-        if (!assignedRole) {
-          return interaction.reply({
-            content: 'Role A not set or not found.',
-            ephemeral: true,
-          });
-        }
-      } else if (action === 'assignB') {
-        assignedRole = config.roleBId ? guild.roles.cache.get(config.roleBId) : null;
-        if (!assignedRole) {
-          return interaction.reply({
-            content: 'Role B not set or not found.',
-            ephemeral: true,
-          });
-        }
-      }
     } else {
-      // Unknown button
       return;
     }
 
@@ -669,7 +675,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         content,
       });
 
-    if (action === 'assign' || action === 'assignA' || action === 'assignB') {
+    if (action === 'assign') {
       await targetMember.roles.add(
         assignedRole,
         `Verified by ${interaction.user.tag}`
@@ -706,7 +712,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
   } catch (err) {
-    console.error('Error handling interaction:', err);
+    console.error('❌ Error handling interaction:', err);
     if (interaction.isRepliable()) {
       interaction.reply({
         content: 'Something went wrong while processing that action.',
