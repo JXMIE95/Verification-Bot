@@ -231,12 +231,24 @@ const setupCommand = new SlashCommandBuilder()
 client.once(Events.ClientReady, async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
-  // Register commands PER GUILD so they show quickly
-  const guilds = await client.guilds.fetch();
-  for (const [id] of guilds) {
-    const guild = await client.guilds.fetch(id);
-    await guild.commands.set([setupCommand]);
-    console.log(`📦 Registered /setup command for guild ${guild.name} (${guild.id})`);
+  // 1) Clear ALL GLOBAL commands for this application (old leftovers)
+  try {
+    await client.application.commands.set([]);
+    console.log('🧹 Cleared ALL global application commands.');
+  } catch (err) {
+    console.error('❌ Failed to clear global commands:', err);
+  }
+
+  // 2) Register /setup PER GUILD so it shows quickly and only once
+  try {
+    const guilds = await client.guilds.fetch();
+    for (const [id] of guilds) {
+      const guild = await client.guilds.fetch(id);
+      await guild.commands.set([setupCommand]);
+      console.log(`📦 Registered /setup command for guild ${guild.name} (${guild.id})`);
+    }
+  } catch (err) {
+    console.error('❌ Failed to register guild commands:', err);
   }
 
   console.log('✅ Setup complete. Use /setup in your server to configure the bot.');
