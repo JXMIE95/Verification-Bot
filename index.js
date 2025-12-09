@@ -37,17 +37,21 @@ const SETTINGS_PATH = './guildSettings.json';
  * }
  */
 let guildSettings = {};
-if (fs.existsSync(SETTINGS_PATH)) {
-  try {
+
+try {
+  if (fs.existsSync(SETTINGS_PATH)) {
     const raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
-    guildSettings = JSON.parse(raw);
-    console.log('📂 Loaded guildSettings.json');
-  } catch (e) {
-    console.error('❌ Failed to parse guildSettings.json, starting empty:', e);
+    guildSettings = JSON.parse(raw || '{}');
+    console.log('📂 Loaded existing guildSettings.json');
+  } else {
+    // ✅ Force-create an empty file on first start
     guildSettings = {};
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(guildSettings, null, 2));
+    console.log('🆕 Created new empty guildSettings.json');
   }
-} else {
-  console.log('📂 No guildSettings.json found yet (will be created after /setup).');
+} catch (e) {
+  console.error('❌ Error while initializing guildSettings.json:', e);
+  guildSettings = {};
 }
 
 function saveSettings() {
@@ -282,6 +286,9 @@ async function maybePostWelcome(member) {
     console.error('❌ maybePostWelcome error:', err);
   }
 }
+
+// ... rest of your file remains EXACTLY the same ...
+// (GuildMemberAdd, GuildMemberUpdate, MessageCreate, InteractionCreate, client.login)
 
 // On join: delayed check
 client.on(Events.GuildMemberAdd, async (member) => {
