@@ -48,7 +48,11 @@ try {
  *     roleBId?: string,
  *     notVerifiedRoleId?: string,
  *     modRoleId?: string,
- *     verifyRoles?: [{ roleId: string, label: string }],
+ *     // Each verifyRoles entry = one button which can assign MULTIPLE roles
+ *     verifyRoles?: [{
+ *       roleIds: string[],   // one or more role IDs
+ *       label: string        // button text
+ *     }],
  *     welcomeTitle?: string,
  *     welcomeDescription?: string
  *   }
@@ -186,17 +190,29 @@ const setupCommand = new SlashCommandBuilder()
   .addSubcommand(sub =>
     sub
       .setName('verifyrole_add')
-      .setDescription('Add a verification role button')
+      .setDescription('Add a verification role button (can assign multiple roles)')
       .addRoleOption(opt =>
         opt
-          .setName('role')
-          .setDescription('Role to assign')
+          .setName('role_1')
+          .setDescription('First role to assign (required)')
           .setRequired(true)
+      )
+      .addRoleOption(opt =>
+        opt
+          .setName('role_2')
+          .setDescription('Second role to assign (optional)')
+          .setRequired(false)
+      )
+      .addRoleOption(opt =>
+        opt
+          .setName('role_3')
+          .setDescription('Third role to assign (optional)')
+          .setRequired(false)
       )
       .addStringOption(opt =>
         opt
           .setName('label')
-          .setDescription('Button label (e.g. "✅ Verify: Migrant")')
+          .setDescription('Button label (e.g. "✅ Verify: Migrant + Extra")')
           .setRequired(false)
       )
   )
@@ -304,9 +320,6 @@ async function maybePostWelcome(member) {
   }
 }
 
-// ... rest of your file remains EXACTLY the same ...
-// (GuildMemberAdd, GuildMemberUpdate, MessageCreate, InteractionCreate, client.login)
-
 // On join: delayed check
 client.on(Events.GuildMemberAdd, async (member) => {
   try {
@@ -342,22 +355,33 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
 
 // ---------- Verification roles helper ----------
 function getVerifyRoles(config, guild) {
+  // Prefer flexible verifyRoles if present
   if (Array.isArray(config?.verifyRoles) && config.verifyRoles.length > 0) {
-    return config.verifyRoles;
+    return config.verifyRoles.map(vr => {
+      if (Array.isArray(vr.roleIds) && vr.roleIds.length > 0) {
+        return { roleIds: vr.roleIds, label: vr.label };
+      }
+      if (vr.roleId) {
+        // Backwards compat for older single-role entries
+        return { roleIds: [vr.roleId], label: vr.label };
+      }
+      return vr;
+    });
   }
 
+  // Fallback to legacy Role A / Role B
   const roles = [];
   if (config?.roleAId) {
     const r = guild.roles.cache.get(config.roleAId);
     roles.push({
-      roleId: config.roleAId,
+      roleIds: [config.roleAId],
       label: r ? `✅ Verify: ${r.name}` : '✅ Verify: Role A',
     });
   }
   if (config?.roleBId) {
     const r = guild.roles.cache.get(config.roleBId);
     roles.push({
-      roleId: config.roleBId,
+      roleIds: [config.roleBId],
       label: r ? `✅ Verify: ${r.name}` : '✅ Verify: Role B',
     });
   }
@@ -405,14 +429,14 @@ client.on(Events.MessageCreate, async (message) => {
     const verifyRoles = getVerifyRoles(config, message.guild);
     const allButtons = [];
 
-    for (const vr of verifyRoles) {
+    verifyRoles.forEach((vr, index) => {
       allButtons.push(
         new ButtonBuilder()
-          .setCustomId(`assign:${vr.roleId}:${message.id}:${author.id}`)
+          .setCustomId(`assignset:${index}:${message.id}:${author.id}`)
           .setLabel(vr.label || '✅ Verify')
           .setStyle(ButtonStyle.Success)
       );
-    }
+    });
 
     allButtons.push(
       new ButtonBuilder()
@@ -530,22 +554,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (sub === 'verifyrole_add') {
-        const role = interaction.options.getRole('role', true);
-        const label = interaction.options.getString('label', false) || `✅ Verify: ${role.name}`;
+        const role1 = interaction.options.getRole('role_1', true);
+        const role2 = interaction.options.getRole('role_2', false);
+        const role3 = interaction.options.getRole('role_3', false);
+        const label = interaction.options.getString('label', false) || `✅ Verify: ${role1.name}`;
+
+        const roleIds = [role1, role2, role3].filter(Boolean).map(r => r.id);
 
         const existing = Array.isArray(config.verifyRoles) ? config.verifyRoles : [];
-        if (existing.some(vr => vr.roleId === role.id)) {
+
+        if (existing.some(vr =>
+          Array.isArray(vr.roleIds) &&
+          vr.roleIds.length === roleIds.length &&
+          vr.roleIds.every(id => roleIds.includes(id))
+        )) {
           return interaction.reply({
-            content: `That role is already configured as a verification button.`,
+            content: 'A button with exactly those roles already exists.',
             ephemeral: true,
           });
         }
 
-        const updated = [...existing, { roleId: role.id, label }];
+        const updated = [...existing, { roleIds, label }];
         updateGuildConfig(guildId, { verifyRoles: updated });
 
+        const roleMentions = roleIds.map(id => `<@&${id}>`).join(', ');
+
         return interaction.reply({
-          content: `✅ Added verification role button:\n• Role: <@&${role.id}>\n• Label: \`${label}\``,
+          content:
+            `✅ Added verification role button:\n` +
+            `• Roles: ${roleMentions}\n` +
+            `• Label: \`${label}\``,
           ephemeral: true,
         });
       }
@@ -570,9 +608,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
-        const lines = list.map(
-          (vr, idx) => `${idx + 1}. <@&${vr.roleId}> — label: \`${vr.label}\``
-        );
+        const lines = list.map((vr, idx) => {
+          const roleIds = vr.roleIds || (vr.roleId ? [vr.roleId] : []);
+          const rolesText = roleIds.length
+            ? roleIds.map(id => `<@&${id}>`).join(', ')
+            : '*(no roles set)*';
+          return `${idx + 1}. ${rolesText} — label: \`${vr.label}\``;
+        });
 
         return interaction.reply({
           content:
@@ -642,12 +684,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
     let messageId;
     let targetUserId;
     let targetMember;
-    let assignedRole = null;
+    let roleIdsToAssign = [];
 
-    if (action === 'assign') {
-      const roleId = parts[1];
+    if (action === 'assignset') {
+      // assignset:<index>:<messageId>:<userId>
+      const setIndex = Number(parts[1]);
       messageId = parts[2];
       targetUserId = parts[3];
+
+      const verifyRoles = getVerifyRoles(config, guild);
+      const vr = verifyRoles[setIndex];
+      if (!vr || !Array.isArray(vr.roleIds) || vr.roleIds.length === 0) {
+        return interaction.reply({
+          content: 'This verification button is not configured with any roles.',
+          ephemeral: true,
+        });
+      }
 
       targetMember = await guild.members.fetch(targetUserId).catch(() => null);
       if (!targetMember) {
@@ -657,13 +709,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      assignedRole = guild.roles.cache.get(roleId);
-      if (!assignedRole) {
-        return interaction.reply({
-          content: 'That role no longer exists on this server.',
-          ephemeral: true,
-        });
-      }
+      roleIdsToAssign = vr.roleIds;
+
     } else if (action === 'deny') {
       messageId = parts[1];
       targetUserId = parts[2];
@@ -699,18 +746,33 @@ client.on(Events.InteractionCreate, async (interaction) => {
         content,
       });
 
-    if (action === 'assign') {
+    if (action === 'assignset') {
+      const rolesToAdd = roleIdsToAssign
+        .map(id => guild.roles.cache.get(id))
+        .filter(Boolean);
+
+      if (rolesToAdd.length === 0) {
+        return interaction.reply({
+          content: 'None of the configured roles for this button exist on this server anymore.',
+          ephemeral: true,
+        });
+      }
+
       await targetMember.roles.add(
-        assignedRole,
+        rolesToAdd,
         `Verified by ${interaction.user.tag}`
       );
       await removeNotVerifiedIfAny();
 
+      const rolesMentionText = rolesToAdd.map(r => `<@&${r.id}>`).join(', ');
+
       await finishAndAck(
-        `✅ Assigned <@&${assignedRole.id}> to <@${targetUserId}> (by <@${interaction.user.id}>)`
+        `✅ Assigned ${rolesMentionText} to <@${targetUserId}> (by <@${interaction.user.id}>)`
       );
       targetMember.send(
-        `You’ve been verified in **${guild.name}** and given the role **${assignedRole.name}**. Welcome!`
+        `You’ve been verified in **${guild.name}** and given the roles ${rolesToAdd
+          .map(r => `**${r.name}**`)
+          .join(', ')}. Welcome!`
       ).catch(() => {});
       return;
     }
