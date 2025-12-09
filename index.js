@@ -46,7 +46,7 @@ try {
  *     staffChannelId?: string,
  *     roleAId?: string,
  *     roleBId?: string,
- *     notVerifiedRoleId?: string,
+ *     notVerifiedRoleId?: string,  // auto-assigned on join, removed on verification
  *     modRoleId?: string,
  *     // Each verifyRoles entry = one button which can assign MULTIPLE roles
  *     verifyRoles?: [{
@@ -243,7 +243,8 @@ client.once(Events.ClientReady, async () => {
 });
 
 // ---------- Welcome message logic ----------
-const welcomedJoinKey = new Map(); // userId -> joinedTimestamp
+const welcomedJoinKey = new Map(); // key: `${guildId}:${userId}` -> joinedTimestamp
+const welcomeKey = (member) => `${member.guild.id}:${member.id}`;
 
 function applyWelcomeTemplate(text, member, config) {
   let out = text || '';
@@ -287,7 +288,8 @@ async function maybePostWelcome(member) {
     }
 
     const joinKey = member.joinedTimestamp;
-    if (welcomedJoinKey.get(member.id) === joinKey) return; // already welcomed this join
+    const mapKey = welcomeKey(member);
+    if (welcomedJoinKey.get(mapKey) === joinKey) return; // already welcomed this join
 
     const channel = await member.guild.channels.fetch(config.verificationChannelId).catch(() => null);
     if (!channel || !channel.isTextBased()) {
@@ -314,13 +316,13 @@ async function maybePostWelcome(member) {
     });
 
     console.log(`👋 Sent welcome embed for member ${member.id} in guild ${member.guild.id}`);
-    welcomedJoinKey.set(member.id, joinKey);
+    welcomedJoinKey.set(mapKey, joinKey);
   } catch (err) {
     console.error('❌ maybePostWelcome error:', err);
   }
 }
 
-// On join: delayed check
+// On join: assign Not Yet Verified + delayed welcome check
 client.on(Events.GuildMemberAdd, async (member) => {
   try {
     const config = getGuildConfig(member.guild.id);
@@ -328,6 +330,19 @@ client.on(Events.GuildMemberAdd, async (member) => {
       console.log(`ℹ️ Member joined guild ${member.guild.id}, but no config exists yet.`);
       return;
     }
+
+    // Assign "Not Yet Verified" role immediately if configured
+    if (config.notVerifiedRoleId) {
+      const role = member.guild.roles.cache.get(config.notVerifiedRoleId);
+      if (role) {
+        member.roles.add(role, 'Auto-assign Not Yet Verified on join')
+          .then(() => console.log(`🧩 Added Not Yet Verified role to ${member.id} in guild ${member.guild.id}`))
+          .catch(err => console.error('❌ Failed to add Not Yet Verified role:', err));
+      } else {
+        console.log(`⚠️ notVerifiedRoleId is set but role not found in guild ${member.guild.id}`);
+      }
+    }
+
     console.log(`👤 Member joined: ${member.id} in guild ${member.guild.id} – scheduling welcome.`);
     setTimeout(() => maybePostWelcome(member), 30_000);
   } catch (err) {
@@ -350,6 +365,15 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     }
   } catch (err) {
     console.error('❌ GuildMemberUpdate welcome error:', err);
+  }
+});
+
+// When member leaves: clear welcome cache for that guild+user
+client.on(Events.GuildMemberRemove, (member) => {
+  const key = welcomeKey(member);
+  if (welcomedJoinKey.has(key)) {
+    welcomedJoinKey.delete(key);
+    console.log(`🧹 Cleared welcome cache for ${member.id} in guild ${member.guild.id} (member left).`);
   }
 });
 
@@ -416,8 +440,8 @@ client.on(Events.MessageCreate, async (message) => {
         `**User:** <@${author.id}>\n` +
         `**Message:** [jump to message](${message.url})\n\n` +
         (config.modRoleId
-          ? `<@&${config.modRoleId}> please review the image and select which role to assign, or deny.`
-          : `Please review the image and select which role to assign, or deny.`
+          ? `<@&${config.modRoleId}> please review the image and select which role set to assign, or deny.`
+          : `Please review the image and select which role set to assign, or deny.`
         )
       )
       .setTimestamp(new Date())
