@@ -1,6 +1,7 @@
 // index.js
 import 'dotenv/config';
 import fs from 'fs';
+import path from 'path';
 import {
   Client,
   GatewayIntentBits,
@@ -17,9 +18,26 @@ import {
 
 const { DISCORD_TOKEN } = process.env;
 
-// ---------- Persistent per-guild settings (JSON file) ----------
-const SETTINGS_PATH = './guildSettings.json';
+// ---------- Figure out where index.js actually lives ----------
+const __filename = new URL(import.meta.url).pathname;
+const __dirname = path.dirname(__filename);
 
+// IMPORTANT: guildSettings.json will now ALWAYS live next to index.js
+const SETTINGS_PATH = path.join(__dirname, 'guildSettings.json');
+
+console.log('🔎 Process CWD:', process.cwd());
+console.log('📄 index.js directory (__dirname):', __dirname);
+console.log('📁 guildSettings.json path:', SETTINGS_PATH);
+
+// Quick FS test so we know if writes work at all
+try {
+  fs.writeFileSync(path.join(__dirname, 'fs-test.txt'), 'fs test ok\n');
+  console.log('✅ FS test: successfully wrote fs-test.txt');
+} catch (e) {
+  console.error('❌ FS test failed: could not write fs-test.txt', e);
+}
+
+// ---------- Persistent per-guild settings (JSON file) ----------
 /**
  * guildSettings structure:
  * {
@@ -44,7 +62,6 @@ try {
     guildSettings = JSON.parse(raw || '{}');
     console.log('📂 Loaded existing guildSettings.json');
   } else {
-    // ✅ Force-create an empty file on first start
     guildSettings = {};
     fs.writeFileSync(SETTINGS_PATH, JSON.stringify(guildSettings, null, 2));
     console.log('🆕 Created new empty guildSettings.json');
