@@ -172,18 +172,30 @@ const setupCommand = new SlashCommandBuilder()
   )
   .addSubcommand(sub =>
     sub
+        .addSubcommand(sub =>
+    sub
       .setName('welcome')
-      .setDescription('Set the welcome embed text for new members')
+      .setDescription('Set the welcome message for new members')
       .addStringOption(opt =>
         opt
           .setName('description')
-          .setDescription('Embed description (supports {user} and {verification_channel})')
+          .setDescription('Message text (supports {user} and {verification_channel})')
           .setRequired(true)
       )
       .addStringOption(opt =>
         opt
           .setName('title')
-          .setDescription('Embed title (optional)')
+          .setDescription('Embed title (only used in embed mode)')
+          .setRequired(false)
+      )
+      .addStringOption(opt =>
+        opt
+          .setName('mode')
+          .setDescription('How to send the welcome message')
+          .addChoices(
+            { name: 'Embed', value: 'embed' },
+            { name: 'Normal message', value: 'text' },
+          )
           .setRequired(false)
       )
   )
@@ -315,17 +327,40 @@ async function maybePostWelcome(member) {
       return;
     }
 
-    const helpRow = new ActionRowBuilder().addComponents(
+        const helpRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`help:${member.id}`)
         .setLabel('🆘 HELP')
         .setStyle(ButtonStyle.Danger)
     );
 
-    await channel.send({
-      embeds: [buildWelcomeEmbed(member, config)],
-      components: [helpRow],
-    });
+    const mode = config.welcomeMode || 'embed';
+
+    if (mode === 'text') {
+      // Plain message mode
+      const defaultDescription =
+        `Welcome <@${member.id}>!\n\n` +
+        `If you are looking to migrate to us, thank you for choosing our Empire to be your new home!\n\n` +
+        (config?.verificationChannelId
+          ? `Please head over to <#${config.verificationChannelId}> and post a screenshot of your in-game governor ID screen so a **Migration Coordinator** can verify you and assign the relevant roles.\n\n`
+          : `Please follow the server instructions to post your in-game governor ID screen so a **Migration Coordinator** can verify you and assign the relevant roles.\n\n`
+        ) +
+        `*Once verified you will be granted access to the remainder of the server.*`;
+
+      const rawDesc = config?.welcomeDescription || defaultDescription;
+      const desc = applyWelcomeTemplate(rawDesc, member, config);
+
+      await channel.send({
+        content: desc,
+        components: [helpRow],
+      });
+    } else {
+      // Default: embed mode
+      await channel.send({
+        embeds: [buildWelcomeEmbed(member, config)],
+        components: [helpRow],
+      });
+    }
 
     console.log(`👋 Sent welcome embed for member ${member.id} in guild ${member.guild.id}`);
     welcomedJoinKey.set(mapKey, joinKey);
@@ -570,21 +605,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      if (sub === 'welcome') {
+            if (sub === 'welcome') {
         const description = interaction.options.getString('description', true);
         const title = interaction.options.getString('title', false) || null;
+        const mode = interaction.options.getString('mode', false) || null; // 'embed' | 'text' | null
 
         updateGuildConfig(guildId, {
           welcomeTitle: title || undefined,
           welcomeDescription: description,
+          // default to 'embed' if not set
+          welcomeMode: mode || config.welcomeMode || 'embed',
         });
 
         return interaction.reply({
           content:
-            '✅ Welcome embed updated.\n' +
+            '✅ Welcome message updated.\n' +
             'You can use these placeholders in the description:\n' +
             '• `{user}` → mentions the new member\n' +
-            '• `{verification_channel}` → mentions the configured verification channel',
+            '• `{verification_channel}` → mentions the configured verification channel\n\n' +
+            `Current mode: \`${mode || config.welcomeMode || 'embed'}\``,
           ephemeral: true,
         });
       }
