@@ -849,7 +849,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         content,
       });
 
-    if (action === 'assignset') {
+        if (action === 'assignset') {
       const rolesToAdd = roleIdsToAssign
         .map(id => guild.roles.cache.get(id))
         .filter(Boolean);
@@ -857,6 +857,32 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (rolesToAdd.length === 0) {
         return interaction.reply({
           content: 'None of the configured roles for this button exist on this server anymore.',
+          ephemeral: true,
+        });
+      }
+
+      const me = guild.members.me;
+      const issues = [];
+
+      if (!me.permissions.has(PermissionFlagsBits.ManageRoles)) {
+        issues.push('• Bot is missing the **Manage Roles** permission.');
+      }
+
+      for (const r of rolesToAdd) {
+        if (r.managed) {
+          issues.push(`• <@&${r.id}> is a **managed role** and cannot be assigned by bots.`);
+        }
+        if (r.position >= me.roles.highest.position) {
+          issues.push(`• <@&${r.id}> is **above or equal to the bot\'s highest role**. Move the bot role above it in Server Settings → Roles.`);
+        }
+      }
+
+      if (issues.length > 0) {
+        return interaction.reply({
+          content:
+            '⚠️ I tried to assign those roles but ran into problems:\n' +
+            issues.join('\n') +
+            `\n\nBot highest role: <@&${me.roles.highest.id}> (position ${me.roles.highest.position})`,
           ephemeral: true,
         });
       }
