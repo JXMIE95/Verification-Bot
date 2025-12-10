@@ -172,8 +172,6 @@ const setupCommand = new SlashCommandBuilder()
   )
   .addSubcommand(sub =>
     sub
-        .addSubcommand(sub =>
-    sub
       .setName('welcome')
       .setDescription('Set the welcome message for new members')
       .addStringOption(opt =>
@@ -194,7 +192,7 @@ const setupCommand = new SlashCommandBuilder()
           .setDescription('How to send the welcome message')
           .addChoices(
             { name: 'Embed', value: 'embed' },
-            { name: 'Normal message', value: 'text' },
+            { name: 'Normal message', value: 'text' }
           )
           .setRequired(false)
       )
