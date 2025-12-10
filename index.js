@@ -626,13 +626,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      if (sub === 'verifyrole_add') {
+            if (sub === 'verifyrole_add') {
         const role1 = interaction.options.getRole('role_1', true);
         const role2 = interaction.options.getRole('role_2', false);
         const role3 = interaction.options.getRole('role_3', false);
         const label = interaction.options.getString('label', false) || `✅ Verify: ${role1.name}`;
 
-        const roleIds = [role1, role2, role3].filter(Boolean).map(r => r.id);
+        const roles = [role1, role2, role3].filter(Boolean);
+        const roleIds = roles.map(r => r.id);
+
+        const me = interaction.guild.members.me;
+        const issues = [];
+
+        // Bot permission check
+        if (!me.permissions.has(PermissionFlagsBits.ManageRoles)) {
+          issues.push('• Bot is missing the **Manage Roles** permission.');
+        }
+
+        // Role-specific checks
+        for (const r of roles) {
+          if (r.managed) {
+            issues.push(`• <@&${r.id}> is a **managed role** (e.g. integration / booster) and cannot be assigned by bots.`);
+          }
+          if (r.position >= me.roles.highest.position) {
+            issues.push(`• <@&${r.id}> is **above or equal to the bot\'s highest role**. Move the bot role above it in Server Settings → Roles.`);
+          }
+        }
+
+        if (issues.length > 0) {
+          return interaction.reply({
+            content:
+              '⚠️ I can\'t reliably assign one or more of those roles yet:\n' +
+              issues.join('\n') +
+              '\n\nPlease fix these, then run `/setup verifyrole_add` again.',
+            ephemeral: true,
+          });
+        }
 
         const existing = Array.isArray(config.verifyRoles) ? config.verifyRoles : [];
 
@@ -656,7 +685,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           content:
             `✅ Added verification role button:\n` +
             `• Roles: ${roleMentions}\n` +
-            `• Label: \`${label}\``,
+            `• Label: \`${label}\`\n\n` +
+            `Bot highest role: <@&${me.roles.highest.id}> (position ${me.roles.highest.position})`,
           ephemeral: true,
         });
       }
