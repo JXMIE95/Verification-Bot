@@ -626,7 +626,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-                  if (sub === 'verifyrole_add') {
+                        if (sub === 'verifyrole_add') {
         const role1 = interaction.options.getRole('role_1', true);
         const role2 = interaction.options.getRole('role_2', false);
         const role3 = interaction.options.getRole('role_3', false);
@@ -691,34 +691,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-        const existing = Array.isArray(config.verifyRoles) ? config.verifyRoles : [];
-
-        if (existing.some(vr =>
-          Array.isArray(vr.roleIds) &&
-          vr.roleIds.length === roleIds.length &&
-          vr.roleIds.every(id => roleIds.includes(id))
-        )) {
-          return interaction.reply({
-            content: 'A button with exactly those roles already exists.',
-            ephemeral: true,
-          });
-        }
-
-        const updated = [...existing, { roleIds, label }];
-        updateGuildConfig(guildId, { verifyRoles: updated });
-
-        const roleMentions = roleIds.map(id => `<@&${id}>`).join(', ');
-
-        return interaction.reply({
-          content:
-            `✅ Added verification role button:\n` +
-            `• Roles: ${roleMentions}\n` +
-            `• Label: \`${label}\`\n\n` +
-            `Bot highest role: <@&${me.roles.highest.id}> (position ${me.roles.highest.position})`,
-          ephemeral: true,
-        });
-      }
-
       if (sub === 'verifyrole_clear') {
         updateGuildConfig(guildId, { verifyRoles: [] });
         return interaction.reply({
@@ -754,9 +726,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ephemeral: true,
         });
       }
-
-      return;
-    }
 
     // ----- Button interactions -----
     if (!interaction.isButton()) return;
