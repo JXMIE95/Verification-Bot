@@ -538,7 +538,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName !== 'setup') return;
       if (!interaction.guildId || !interaction.guild) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+        return interaction.reply({
+          content: 'This command can only be used in a server.',
+          ephemeral: true,
+        });
       }
 
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
@@ -584,9 +587,33 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const lines = [];
         lines.push('✅ Roles updated:');
-        lines.push(`• Role A (Existing Server Member): ${roleA ? `<@&${roleA.id}>` : (config.roleAId ? `<@&${config.roleAId}>` : '*(none set)*')}`);
-        lines.push(`• Role B (Migrant): ${roleB ? `<@&${roleB.id}>` : (config.roleBId ? `<@&${config.roleBId}>` : '*(none set)*')}`);
-        lines.push(`• Not Yet Verified: ${notVerified ? `<@&${notVerified.id}>` : (config.notVerifiedRoleId ? `<@&${config.notVerifiedRoleId}>` : '*(none set)*')}`);
+        lines.push(
+          `• Role A (Existing Server Member): ${
+            roleA
+              ? `<@&${roleA.id}>`
+              : config.roleAId
+              ? `<@&${config.roleAId}>`
+              : '*(none set)*'
+          }`,
+        );
+        lines.push(
+          `• Role B (Migrant): ${
+            roleB
+              ? `<@&${roleB.id}>`
+              : config.roleBId
+              ? `<@&${config.roleBId}>`
+              : '*(none set)*'
+          }`,
+        );
+        lines.push(
+          `• Not Yet Verified: ${
+            notVerified
+              ? `<@&${notVerified.id}>`
+              : config.notVerifiedRoleId
+              ? `<@&${config.notVerifiedRoleId}>`
+              : '*(none set)*'
+          }`,
+        );
 
         return interaction.reply({
           content: lines.join('\n'),
@@ -603,7 +630,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-            if (sub === 'welcome') {
+      if (sub === 'welcome') {
         const description = interaction.options.getString('description', true);
         const title = interaction.options.getString('title', false) || null;
         const mode = interaction.options.getString('mode', false) || null; // 'embed' | 'text' | null
@@ -611,7 +638,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         updateGuildConfig(guildId, {
           welcomeTitle: title || undefined,
           welcomeDescription: description,
-          // default to 'embed' if not set
           welcomeMode: mode || config.welcomeMode || 'embed',
         });
 
@@ -626,14 +652,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-                        if (sub === 'verifyrole_add') {
+      if (sub === 'verifyrole_add') {
         const role1 = interaction.options.getRole('role_1', true);
         const role2 = interaction.options.getRole('role_2', false);
         const role3 = interaction.options.getRole('role_3', false);
-        const label = interaction.options.getString('label', false) || `✅ Verify: ${role1.name}`;
+        const label =
+          interaction.options.getString('label', false) || `✅ Verify: ${role1.name}`;
 
         const roles = [role1, role2, role3].filter(Boolean);
-        const roleIds = roles.map(r => r.id);
+        const roleIds = roles.map((r) => r.id);
 
         const me = interaction.guild.members.me;
         const issues = [];
@@ -646,10 +673,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // Role-specific checks
         for (const r of roles) {
           if (r.managed) {
-            issues.push(`• <@&${r.id}> is a **managed role** (integration / booster) and cannot be assigned by bots.`);
+            issues.push(
+              `• <@&${r.id}> is a **managed role** (integration / booster) and cannot be assigned by bots.`,
+            );
           }
           if (r.position >= me.roles.highest.position) {
-            issues.push(`• <@&${r.id}> is **above or equal to the bot\'s highest role**. Move the bot role above it in Server Settings → Roles.`);
+            issues.push(
+              `• <@&${r.id}> is **above or equal to the bot's highest role**. Move the bot role above it in Server Settings → Roles.`,
+            );
           }
         }
 
@@ -665,11 +696,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const existing = Array.isArray(config.verifyRoles) ? config.verifyRoles : [];
 
-        if (existing.some(vr =>
-          Array.isArray(vr.roleIds) &&
-          vr.roleIds.length === roleIds.length &&
-          vr.roleIds.every(id => roleIds.includes(id))
-        )) {
+        if (
+          existing.some(
+            (vr) =>
+              Array.isArray(vr.roleIds) &&
+              vr.roleIds.length === roleIds.length &&
+              vr.roleIds.every((id) => roleIds.includes(id)),
+          )
+        ) {
           return interaction.reply({
             content: 'A button with exactly those roles already exists.',
             ephemeral: true,
@@ -679,7 +713,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const updated = [...existing, { roleIds, label }];
         updateGuildConfig(guildId, { verifyRoles: updated });
 
-        const roleMentions = roleIds.map(id => `<@&${id}>`).join(', ');
+        const roleMentions = roleIds.map((id) => `<@&${id}>`).join(', ');
 
         return interaction.reply({
           content:
@@ -714,18 +748,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const lines = list.map((vr, idx) => {
           const roleIds = vr.roleIds || (vr.roleId ? [vr.roleId] : []);
           const rolesText = roleIds.length
-            ? roleIds.map(id => `<@&${id}>`).join(', ')
+            ? roleIds.map((id) => `<@&${id}>`).join(', ')
             : '*(no roles set)*';
           return `${idx + 1}. ${rolesText} — label: \`${vr.label}\``;
         });
 
         return interaction.reply({
-          content:
-            'Current verification role buttons:\n' +
-            lines.join('\n'),
+          content: 'Current verification role buttons:\n' + lines.join('\n'),
           ephemeral: true,
         });
       }
+
+      // end of /setup handling
+      return;
+    }
 
     // ----- Button interactions -----
     if (!interaction.isButton()) return;
@@ -736,12 +772,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const config = getGuildConfig(guild.id);
     if (!config) return;
 
-    // HELP button
+    // HELP button from welcome message
     if (interaction.customId.startsWith('help:')) {
       const userId = interaction.customId.split(':')[1];
       const staffChannelId = config.staffChannelId;
+
       if (staffChannelId) {
-        const staffChannel = await client.channels.fetch(staffChannelId).catch(() => null);
+        const staffChannel = await client.channels
+          .fetch(staffChannelId)
+          .catch(() => null);
 
         if (staffChannel && staffChannel.isTextBased()) {
           const content = config.modRoleId
@@ -764,7 +803,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Restrict verification actions
+    // Restrict verification actions (buttons) to modRole or ManageRoles
     if (config.modRoleId) {
       const member = await guild.members.fetch(interaction.user.id);
       if (
@@ -810,7 +849,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       roleIdsToAssign = vr.roleIds;
-
     } else if (action === 'deny') {
       messageId = parts[1];
       targetUserId = parts[2];
@@ -832,10 +870,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const removeNotVerifiedIfAny = async () => {
       if (notVerifiedRole && targetMember.roles.cache.has(notVerifiedRole.id)) {
-        await targetMember.roles.remove(
-          notVerifiedRole,
-          `Auto-removed on verification by ${interaction.user.tag}`
-        ).catch(() => {});
+        await targetMember.roles
+          .remove(
+            notVerifiedRole,
+            `Auto-removed on verification by ${interaction.user.tag}`,
+          )
+          .catch(() => {});
       }
     };
 
@@ -846,14 +886,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
         content,
       });
 
-            if (action === 'assignset') {
+    if (action === 'assignset') {
       const rolesToAdd = roleIdsToAssign
-        .map(id => guild.roles.cache.get(id))
+        .map((id) => guild.roles.cache.get(id))
         .filter(Boolean);
 
       if (rolesToAdd.length === 0) {
         return interaction.reply({
-          content: 'None of the configured roles for this button exist on this server anymore.',
+          content:
+            'None of the configured roles for this button exist on this server anymore.',
           ephemeral: true,
         });
       }
@@ -867,10 +908,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       for (const r of rolesToAdd) {
         if (r.managed) {
-          issues.push(`• <@&${r.id}> is a **managed role** and cannot be assigned by bots.`);
+          issues.push(
+            `• <@&${r.id}> is a **managed role** and cannot be assigned by bots.`,
+          );
         }
         if (r.position >= me.roles.highest.position) {
-          issues.push(`• <@&${r.id}> is **above or equal to the bot\'s highest role**. Move the bot role above it in Server Settings → Roles.`);
+          issues.push(
+            `• <@&${r.id}> is **above or equal to the bot's highest role**. Move the bot role above it in Server Settings → Roles.`,
+          );
         }
       }
 
@@ -884,41 +929,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      await targetMember.roles.add(
-        rolesToAdd,
-        `Verified by ${interaction.user.tag}`
-      );
+      await targetMember.roles.add(rolesToAdd, `Verified by ${interaction.user.tag}`);
       await removeNotVerifiedIfAny();
 
-      const rolesMentionText = rolesToAdd.map(r => `<@&${r.id}>`).join(', ');
+      const rolesMentionText = rolesToAdd.map((r) => `<@&${r.id}>`).join(', ');
 
       await finishAndAck(
-        `✅ Assigned ${rolesMentionText} to <@${targetUserId}> (by <@${interaction.user.id}>)`
+        `✅ Assigned ${rolesMentionText} to <@${targetUserId}> (by <@${interaction.user.id}>)`,
       );
-      targetMember.send(
-        `You’ve been verified in **${guild.name}** and given the roles ${rolesToAdd
-          .map(r => `**${r.name}**`)
-          .join(', ')}. Welcome!`
-      ).catch(() => {});
-      return;
-    }
-
-      await targetMember.roles.add(
-        rolesToAdd,
-        `Verified by ${interaction.user.tag}`
-      );
-      await removeNotVerifiedIfAny();
-
-      const rolesMentionText = rolesToAdd.map(r => `<@&${r.id}>`).join(', ');
-
-      await finishAndAck(
-        `✅ Assigned ${rolesMentionText} to <@${targetUserId}> (by <@${interaction.user.id}>)`
-      );
-      targetMember.send(
-        `You’ve been verified in **${guild.name}** and given the roles ${rolesToAdd
-          .map(r => `**${r.name}**`)
-          .join(', ')}. Welcome!`
-      ).catch(() => {});
+      targetMember
+        .send(
+          `You’ve been verified in **${guild.name}** and given the roles ${rolesToAdd
+            .map((r) => `**${r.name}**`)
+            .join(', ')}. Welcome!`,
+        )
+        .catch(() => {});
       return;
     }
 
@@ -935,20 +960,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
       await finishAndAck(
-        `❌ Denied <@${targetUserId}> (by <@${interaction.user.id}>)`
+        `❌ Denied <@${targetUserId}> (by <@${interaction.user.id}>)`,
       );
-      targetMember.send(
-        `Your verification in **${guild.name}** was not approved. Please review the instructions and try again.`
-      ).catch(() => {});
+      targetMember
+        .send(
+          `Your verification in **${guild.name}** was not approved. Please review the instructions and try again.`,
+        )
+        .catch(() => {});
       return;
     }
-    } catch (err) {
+  } catch (err) {
     console.error('❌ Error handling interaction:', err);
     if (interaction.isRepliable()) {
-      interaction.reply({
-        content: `Something went wrong while processing that action:\n\`${err.message || err}\``,
-        ephemeral: true,
-      }).catch(() => {});
+      interaction
+        .reply({
+          content: `Something went wrong while processing that action:\n\`${
+            err.message || err
+          }\``,
+          ephemeral: true,
+        })
+        .catch(() => {});
     }
   }
 });
