@@ -626,7 +626,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-            if (sub === 'verifyrole_add') {
+                  if (sub === 'verifyrole_add') {
         const role1 = interaction.options.getRole('role_1', true);
         const role2 = interaction.options.getRole('role_2', false);
         const role3 = interaction.options.getRole('role_3', false);
@@ -646,7 +646,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // Role-specific checks
         for (const r of roles) {
           if (r.managed) {
-            issues.push(`• <@&${r.id}> is a **managed role** (e.g. integration / booster) and cannot be assigned by bots.`);
+            issues.push(`• <@&${r.id}> is a **managed role** (integration / booster) and cannot be assigned by bots.`);
           }
           if (r.position >= me.roles.highest.position) {
             issues.push(`• <@&${r.id}> is **above or equal to the bot\'s highest role**. Move the bot role above it in Server Settings → Roles.`);
@@ -662,6 +662,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
             ephemeral: true,
           });
         }
+
+        const existing = Array.isArray(config.verifyRoles) ? config.verifyRoles : [];
+
+        if (existing.some(vr =>
+          Array.isArray(vr.roleIds) &&
+          vr.roleIds.length === roleIds.length &&
+          vr.roleIds.every(id => roleIds.includes(id))
+        )) {
+          return interaction.reply({
+            content: 'A button with exactly those roles already exists.',
+            ephemeral: true,
+          });
+        }
+
+        const updated = [...existing, { roleIds, label }];
+        updateGuildConfig(guildId, { verifyRoles: updated });
+
+        const roleMentions = roleIds.map(id => `<@&${id}>`).join(', ');
+
+        return interaction.reply({
+          content:
+            `✅ Added verification role button:\n` +
+            `• Roles: ${roleMentions}\n` +
+            `• Label: \`${label}\`\n\n` +
+            `Bot highest role: <@&${me.roles.highest.id}> (position ${me.roles.highest.position})`,
+          ephemeral: true,
+        });
+      }
 
         const existing = Array.isArray(config.verifyRoles) ? config.verifyRoles : [];
 
@@ -849,7 +877,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         content,
       });
 
-        if (action === 'assignset') {
+            if (action === 'assignset') {
       const rolesToAdd = roleIdsToAssign
         .map(id => guild.roles.cache.get(id))
         .filter(Boolean);
@@ -906,6 +934,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
+      await targetMember.roles.add(
+        rolesToAdd,
+        `Verified by ${interaction.user.tag}`
+      );
+      await removeNotVerifiedIfAny();
+
+      const rolesMentionText = rolesToAdd.map(r => `<@&${r.id}>`).join(', ');
+
+      await finishAndAck(
+        `✅ Assigned ${rolesMentionText} to <@${targetUserId}> (by <@${interaction.user.id}>)`
+      );
+      targetMember.send(
+        `You’ve been verified in **${guild.name}** and given the roles ${rolesToAdd
+          .map(r => `**${r.name}**`)
+          .join(', ')}. Welcome!`
+      ).catch(() => {});
+      return;
+    }
+
     if (action === 'deny') {
       if (config.verificationChannelId) {
         const verificationChannel = await interaction.client.channels
@@ -926,11 +973,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ).catch(() => {});
       return;
     }
-  } catch (err) {
+    } catch (err) {
     console.error('❌ Error handling interaction:', err);
     if (interaction.isRepliable()) {
       interaction.reply({
-        content: 'Something went wrong while processing that action.',
+        content: `Something went wrong while processing that action:\n\`${err.message || err}\``,
         ephemeral: true,
       }).catch(() => {});
     }
