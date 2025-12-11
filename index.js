@@ -264,6 +264,16 @@ client.once(Events.ClientReady, async () => {
   console.log('✅ Setup complete. Use /setup in your server to configure the bot.');
 });
 
+// When the bot joins a new server, register /setup there too
+client.on(Events.GuildCreate, async (guild) => {
+  try {
+    await guild.commands.set([setupCommand]);
+    console.log(`🆕 Registered /setup command for NEW guild ${guild.name} (${guild.id})`);
+  } catch (err) {
+    console.error(`❌ Failed to register /setup for new guild ${guild.id}:`, err);
+  }
+});
+
 // ---------- Welcome message logic ----------
 const welcomedJoinKey = new Map(); // key: `${guildId}:${userId}` -> joinedTimestamp
 const welcomeKey = (member) => `${member.guild.id}:${member.id}`;
